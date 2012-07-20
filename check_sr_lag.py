@@ -27,13 +27,10 @@ one.
 hostname = os.uname()[1].split('.')[0]
 timestamp = int(time.time())
 
-def graphite(hostname, time_lag, timestamp, carbonhost):
-    # equivalent to timedelta.total_seconds() in python 2.7; we want just the number of seconds
-    time_lag = ((time_lag.microseconds + (time_lag.seconds + time_lag.days * 24 * 3600)
-            * 10**6) / 10**6)
+def graphite(hostname, seconds_lag, timestamp, carbonhost):
     data = []
 
-    data.append("servers.%s.pg_sr_time_lag %s %d" % (hostname, time_lag, timestamp))
+    data.append("servers.%s.pg_sr_time_lag %s %d" % (hostname, seconds_lag, timestamp))
 
     message = '\n'.join(data) + '\n'
 
@@ -46,18 +43,16 @@ def graphite(hostname, time_lag, timestamp, carbonhost):
         print("ERROR!  Couldn't connect to carbon host on %s" % carbonhost)
         sys.exit(1)
         
-def nagios(time_lag, warn, critical):
-    time_lag = ((time_lag.microseconds + (time_lag.seconds + time_lag.days * 24 * 3600)
-            * 10**6) / 10**6)
+def nagios(seconds_lag, warn, critical):
 
-    if time_lag < warn:
-        print("All good - timelag: %s" % time_lag)
+    if seconds_lag < warn:
+        print("All good - timelag: %s" % seconds_lag)
         sys.exit(0)
-    elif time_lag > warn and time_lag < critical:
-        print("WARNING - timelag: %s" % time_lag)
+    elif seconds_lag < critical:
+        print("WARNING - timelag: %s" % seconds_lag)
         sys.exit(1)
     else:
-        print("CRITICAL!!! timelag: %s" % time_lag )
+        print("CRITICAL!!! timelag: %s" % seconds_lag )
         sys.exit(2)
 
 def main():
@@ -113,14 +108,14 @@ def main():
     nodeid = cur.fetchone()[0]
     
     # get time_lag
-    cur.execute("SELECT time_lag FROM repmgr_%s.repl_status WHERE standby_node"
+    cur.execute("SELECT extract('epoch' from time_lag) as seconds_lag FROM repmgr_%s.repl_status WHERE standby_node"
             " = %s" % (cluster, nodeid))
-    time_lag = cur.fetchone()[0]
+    seconds_lag = cur.fetchone()[0]
     
     if options.output == "graphite":
-        graphite(options.standby, time_lag, timestamp, options.carbonhost)
+        graphite(options.standby, seconds_lag, timestamp, options.carbonhost)
     if options.output == "nagios":
-        nagios(time_lag, options.warn, options.critical)
+        nagios(seconds_lag, options.warn, options.critical)
 
     cur.close()
     conn.close()
